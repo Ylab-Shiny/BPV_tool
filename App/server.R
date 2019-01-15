@@ -129,21 +129,21 @@ shinyServer(function(input, output, session){
   # 全学電力量の最大値をアイコンとして出力
   output$Max <- renderInfoBox({
     
-    infoBox("大学全体の最大電力[kW]", max(All()$Allcampus, na.rm = T), color = "red")
+    infoBox("大学全体の最大電力[kWh]", max(All()$Allcampus, na.rm = T), color = "red")
     
   }) ### Maxの最終部分
   
   # 全学電力量の最小値のアイコンとして出力
   output$Min <- renderInfoBox({
     
-    infoBox("大学全体の最小電力[kW]", min(All()$Allcampus, na.rm = T), color = "blue")
+    infoBox("大学全体の最小電力[kWh]", min(All()$Allcampus, na.rm = T), color = "blue")
     
   }) ### Minの最終部分
   
   # 全学電力量の平均電力をアイコンとして出力
   output$Mean <- renderInfoBox({
     
-    infoBox("大学全体の平均電力消費[kW]", mean(All()$Allcampus, na.rm = T), color = "green")
+    infoBox("大学全体の平均電力消費[kWh]", mean(All()$Allcampus, na.rm = T), color = "green")
     
   }) ### Meanの最終部分
   
@@ -151,7 +151,7 @@ shinyServer(function(input, output, session){
   output$trendGragh <- renderPlot({
     
     ggplot(passData4(), aes(x = label, y = P_con, color = Deps)) + 
-      geom_line() + ylim(input$RangeY[1], input$RangeY[2]) + xlab("時間") + ylab("電力消費量[kWh]") + ggtitle("トレンドグラフ")
+      geom_line() + ylim(input$RangeY[1], input$RangeY[2]) + xlab("時間") + ylab("電力消費量[kWhh]") + ggtitle("トレンドグラフ")
     
   }) ### trendGraghの最終部分
   
@@ -219,7 +219,7 @@ shinyServer(function(input, output, session){
     if (!is.null(input$file)) {
       qqq <- ggplot(Data_qqq2(),aes(x=Var1,y=value,group=Var2,color=cluster))+geom_line(size=1.2)+
         theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
-        xlab("時間") + ylab("電力消費量[kWh]") + ggtitle("クラスタセンター")
+        xlab("時間") + ylab("電力消費量[kWhh]") + ggtitle("クラスタセンター")
       
       print(qqq)
     } else {

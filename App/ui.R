@@ -15,7 +15,7 @@ header <- dashboardHeader(title = "建物エネルギーデータ分析ツール
 sidebar <- dashboardSidebar(
   # サイドバーメニュー
   sidebarMenu(
-    menuItem("データセット[kW]", tabName = "table"),
+    menuItem("データセット[kWh]", tabName = "table"),
     menuItem("トレンドグラフ", tabName = "trend", badgeLabel = "ロード遅め", badgeColor = "red"),
     menuItem("クラスタリング", tabName = "clustering")
   ),
@@ -45,7 +45,7 @@ sidebar <- dashboardSidebar(
   # 1行改行
   br(),
   
-  sliderInput(inputId = "RangeY", label = "Y軸（電力消費[kW]）の範囲をを指定してください",
+  sliderInput(inputId = "RangeY", label = "Y軸（電力消費[kWh]）の範囲をを指定してください",
               min = 0, max = 4000, value = c(0, 4000), step = 50)
   
 ) ### sidebarの最終部分
