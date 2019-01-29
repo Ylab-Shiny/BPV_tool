@@ -30,8 +30,7 @@ shinyServer(function(input, output, session){
       firstData <- read_csv(input$file$datapath)
       names(firstData)[1] <- "label"
     } else {
-      firstData <- read_csv("testData.csv")
-      names(firstData)[1] <- "label"
+      firstData <- NULL
     }
     
     return(firstData)
@@ -87,34 +86,23 @@ shinyServer(function(input, output, session){
   
   # データテーブルのアウトプット
   output$DataTable <- renderDataTable({
-    datatable(passData3(),
-              options = list(
-                lengthMenu = c(10, 100, 1500),
-                pageLength = 100,
-                width = 1000,
-                scrollX = "200px",
-                scrollY = "700px",
-                scrollCollapse = T
-              ))
+    if (!is.null(input$file)) {
+      datatable(passData3(),
+                options = list(
+                  lengthMenu = c(10, 100, 1500),
+                  pageLength = 100,
+                  width = 1000,
+                  scrollX = "200px",
+                  scrollY = "700px",
+                  scrollCollapse = T
+                ))
+    } else {
+      print(NULL)
+    }
+    
+    
   }) ### DataTableの最終部分
   
-  # 全学電量データ
-  testData <- read_csv("testData.csv")
-  testData2 <- testData %>% mutate(Allcampus = 東キャンパス受電電力量 + 西キャンパス受電電力量)
-  names(testData2)[1] <- "label"
-  All <- reactive({
-    # 日付ラベルを追加
-    firstData <- testData2 %>% mutate(date = substr(label, 1, 10))
-    secondData <- firstData %>% filter(
-      date >= input$theRange[1] & date <= input$theRange[2]
-    ) %>% select(-c(date))
-    
-    # labelの型をPOSIXctに変換
-    secondData$label <- as.POSIXct(secondData$label, "%Y-%m-%d %H:%M:%S", tz = "GMT")
-    
-    return(secondData)
-    
-  }) ### Allの最終部分
   
   output$target_cluster <- renderUI({
     # 列名labelは必要ないので除外
@@ -125,53 +113,75 @@ shinyServer(function(input, output, session){
   }) ### selectDepsの最終部分
   
   
+  # 選択された部局のみ取り出す
+  targetData <- reactive({
+    firstData <- passData2() %>% select(label, input$target)
+    
+    return(firstData)
+  }) ### passData3の最終部分
+  
   # アイコン
   # 全学電力量の最大値をアイコンとして出力
   output$Max <- renderInfoBox({
-    
-    infoBox("大学全体の最大電力[kWh]", max(All()$Allcampus, na.rm = T), color = "red")
+    if (!is.null(input$file)) {
+      infoBox("選択系列の最大値", max(targetData()[[2]], na.rm = T), color = "red")
+    } else {
+      infoBox("選択系列の最大値", NULL, color = "red")
+    }
     
   }) ### Maxの最終部分
   
   # 全学電力量の最小値のアイコンとして出力
   output$Min <- renderInfoBox({
-    
-    infoBox("大学全体の最小電力[kWh]", min(All()$Allcampus, na.rm = T), color = "blue")
+    if (!is.null(input$file)) {
+      infoBox("選択系列の最小値", min(targetData()[[2]], na.rm = T), color = "blue")
+    } else {
+      infoBox("選択系列の最小値", NULL, color = "blue")
+    }
     
   }) ### Minの最終部分
   
   # 全学電力量の平均電力をアイコンとして出力
   output$Mean <- renderInfoBox({
-    
-    infoBox("大学全体の平均電力消費[kWh]", mean(All()$Allcampus, na.rm = T), color = "green")
+    if (!is.null(input$file)) {
+      infoBox("選択系列の平均値", mean(targetData()[[2]], na.rm = T), color = "green")
+    } else {
+      infoBox("選択系列の平均値", NULL, color = "green")
+    }
     
   }) ### Meanの最終部分
   
   ## トレンドグラフ ###
   output$trendGragh <- renderPlot({
+    if (!is.null(input$file)) {
+      validate(
+        need(input$theDeps != "", "項目を選択してください")
+      )
+      
+      ggplot(passData4(), aes(x = label, y = P_con, color = Deps)) + 
+        geom_line() + ylim(input$RangeY[1], input$RangeY[2]) + xlab("時間") + ylab("電力消費量[kWhh]") + ggtitle("トレンドグラフ")
+    } else {
+      print(NULL)
+    }
     
-    ggplot(passData4(), aes(x = label, y = P_con, color = Deps)) + 
-      geom_line() + ylim(input$RangeY[1], input$RangeY[2]) + xlab("時間") + ylab("電力消費量[kWhh]") + ggtitle("トレンドグラフ")
     
   }) ### trendGraghの最終部分
   
 
   # クラスターセンタープロット -----------------------------------------------------------
   
-  output$target_cluster <- renderUI({
-    # 列名labelは必要ないので除外
-    Deplist = names(testData2[-1])
-    
-    selectInput(inputId = "target", label = "クラスタリングしたい項目を指定してください（複数選択不可）",
-                Deplist, multiple = F, selected = Deplist[1])
-  }) ### selectDepsの最終部分
   
   # NAがあってはならない
   Data_qqq <- reactive({
     if (!is.null(input$file)) {
-      x <- testData2 %>% select(input$target) %>% data.frame()
+      x <- passData() %>% select(input$target) %>% data.frame()
+      judge <- which(is.na(x))
       
-      tx <- testData2 %>% select(label)
+      validate(
+        need(length(judge) == 0, "データの中に欠損値が含まれているので計算できません")
+      )
+      
+      tx <- passData() %>% select(label)
       tx <- strptime(unlist(tx), "%Y-%m-%d %H:%M:%S")
       time <- format(tx, "%H:%M:%S")
       date <- format(tx, "%Y-%m-%d")
@@ -196,11 +206,6 @@ shinyServer(function(input, output, session){
     if (!is.null(input$file)) {
       tr <- t(Data_qqq())
       me <- melt(tr)
-      ggplot(me,aes(x=Var1,y=value,group=Var2,colour=Var2))+geom_line()+xlab("time")
-      ggplot(me,aes(x=Var1,y=value,group=Var2,colour=Var2))+geom_line(size=1.2)+xlab("time")#to change the thickness of line
-      ggplot(me,aes(x=Var1,y=value,group=Var2,colour=Var2))+geom_line(size=1.2)+
-        xlab("time")+theme(axis.text.x = element_text(angle = 90, hjust = 1))#to rotate the x-axis by 90 degree
-      #different colour ko lines athawa points haru plot garna cha vane yeso garne
       mu<-mutate(me,cluster=paste0("cluster",me$Var2))
       
     } else {
@@ -210,11 +215,7 @@ shinyServer(function(input, output, session){
     return(mu)
   }) ### Data_qqq2の最終部分
   
-  # Data_qqq2の出力
-  output$Data_qqq <- renderDataTable({
-    datatable(Data_qqq2())
-  }) ### output$Data_qqqの最終部分
-  
+  # クラスタセンタープロット
   output$qqq <- renderPlot({
     if (!is.null(input$file)) {
       qqq <- ggplot(Data_qqq2(),aes(x=Var1,y=value,group=Var2,color=cluster))+geom_line(size=1.2)+
