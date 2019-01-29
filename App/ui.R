@@ -52,6 +52,11 @@ sidebar <- dashboardSidebar(
 
 # body #
 body <- dashboardBody(
+  tabPanel("Home",
+  h1("ようこそ『建物エネルギーデータ分析ツール』へ")
+  ),
+  img(src = "", with = 200),
+  
   tabItems(
     tabItem(tabName = "table",
             dataTableOutput("DataTable")),
