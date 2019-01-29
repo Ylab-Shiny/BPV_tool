@@ -16,7 +16,7 @@ sidebar <- dashboardSidebar(
   # サイドバーメニュー
   sidebarMenu(
     menuItem("データセット[kWh]", tabName = "table"),
-    menuItem("トレンドグラフ", tabName = "trend", badgeLabel = "ロード遅め", badgeColor = "red"),
+    menuItem("トレンドグラフ", tabName = "trend", badgeColor = "red"),
     menuItem("クラスタリング", tabName = "clustering")
   ),
   
@@ -39,39 +39,40 @@ sidebar <- dashboardSidebar(
   # 1行改行
   br(),
   
+  sliderInput(inputId = "RangeY", label = "Y軸（電力消費[kWh]）の範囲をを指定してください",
+              min = 0, max = 4000, value = c(0, 4000), step = 50),
+  
   # クラスタリングの対象とする項目の選択
   uiOutput("target_cluster"),
   
   # 1行改行
-  br(),
-  
-  sliderInput(inputId = "RangeY", label = "Y軸（電力消費[kWh]）の範囲をを指定してください",
-              min = 0, max = 4000, value = c(0, 4000), step = 50)
+  br()
   
 ) ### sidebarの最終部分
 
 # body #
 body <- dashboardBody(
+  
   tabItems(
-    tabItem(tabName = "table",
-            dataTableOutput("DataTable")),
+    tabItem(
+      h1("ようこそ『建物エネルギーデータ分析ツール』へ"),
+      tabName = "table",
+      dataTableOutput("DataTable")),
     
     tabItem(tabName = "trend",
-            shiny::fluidRow(
-              infoBoxOutput(width = 3, "Max"),
-              infoBoxOutput(width = 3, "Min"),
-              infoBoxOutput(width = 3, "Mean"),
-              
-              # トレンドグラフの描画
-              plotOutput("trendGragh")
-            )),
+            
+            # トレンドグラフの描画
+            plotOutput("trendGragh")
+            ),
     
     tabItem(tabName = "clustering",
+            
+            # アイコン
+            infoBoxOutput(width = 3, "Max"),
+            infoBoxOutput(width = 3, "Min"),
+            infoBoxOutput(width = 3, "Mean"),
             # クラスタセンターの描画
-            plotOutput("qqq"),
-            # カレンダープロットの描画
-            plotOutput("CalenderPlot"),
-            dataTableOutput("Data_calender")
+            plotOutput("qqq")
             )
     
   )
