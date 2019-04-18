@@ -1,32 +1,165 @@
 ##############################################################################################################################
 #### 建物エネルギーデータ分析ツール server.R #################################################################################
 ##############################################################################################################################
-# ライブラリ一覧
-{
-  library(shiny)
-  library(dplyr)
-  library(ggplot2)
-  library(DT)
-  library(readr)
-  library(tcltk)
-  library(devtools)
-  library(ggTimeSeries)
-  library(plyr)
-  library(data.table) 
-  library(stats) 
-  
-}
-# ブラウザでの立ち上げ
+
+# 外部パッケージ一覧 ---------------------------------------------------------------
+library(shiny)
+library(dplyr)
+library(ggplot2)
+library(DT)
+library(readr)
+library(tcltk)
+library(ggTimeSeries)
+library(plyr)
+library(data.table) 
+library(stats)
+library(tseries)
+library(forecast)
+library(norm2)
+
+# browser設定 ---------------------------------------------------------------
 options(shiny.launch.browser = T)
 
+# 外れ値処理の関数化 ---------------------------------------------------------------------
+repOutliersNA <- function(Column) {
+  Column <- tbl_df(Column)
+  xx1 <- Column %>% mutate(
+    Norm = (Column-min(Column, na.rm = T)) / (max(Column, na.rm = T)-min(Column, na.rm = T)) * (1-0) + 0
+  )
+  qq <- data.frame(quantile(xx1[[2]],c(0.25, 0.75), na.rm = T))
+  Q1 <- qq[1, 1]
+  Q3 <- qq[2, 1]
+  
+  outer_l_Q1 <- Q1 - 1.5 * (Q3 - Q1)
+  outer_m_Q3 <- Q3 + 3 * (Q3 - Q1)
+  outer_ll <- which(xx1$Norm < outer_l_Q1)
+  outer_mm <- which(xx1$Norm > outer_m_Q3)
+  
+  # 重複なく昇順に行番号を抽出
+  row_num_out <- unique(c(outer_ll, outer_mm)) %>% sort()
+  
+  # 外れ値の出力
+  outer_outlier <- cbind.data.frame(Column[row_num_out,], row_number = row_num_out)
+  Column_removeOutliers <- Column
+  Column_removeOutliers[outer_outlier$row_number, 1] <- NA
+  
+  
+  return(data.frame(Column_removeOutliers))
+}
 
-## shinyサーバー ##
+
+
+# 補完の関数化 ---------------------------------------------------------------------
+impPrediction <- function(BivariateDataframe, season) {
+  originalLabel <- BivariateDataframe[[1]]
+  original_colname <- colnames(BivariateDataframe)
+  dateList <- substr(originalLabel, 1, 10) %>% unique()
+  MissingData <- BivariateDataframe[which(is.na(BivariateDataframe[[2]])), ]
+  targetDate <- substr(MissingData[[1]], 1, 10) %>% unique() %>% as.Date()
+  
+  for (i in 4:length(dateList)) {
+    if(i == 4) {
+      
+      theDate <- as.Date(dateList[i])
+      endDate <- theDate - 1
+      startDate <- endDate - 2
+      
+      dataset <- BivariateDataframe
+      names(dataset) <- c("label", "value")
+      trainingData <- dataset[1:(season*3), ]
+      tsTrain <- ts(trainingData$value, start = 1, frequency = season)
+      n_temp <- data.frame(trainingData)
+      
+      if(theDate %in% targetDate) {
+        Model <- auto.arima(tsTrain, ic="aic", trace = F, stepwise = F, approximation = F, allowmean = F, allowdrift = F)
+        Model.pred <- predict(Model, 24)
+        pred <- Model.pred$pred
+        
+        Missing <- dataset %>% mutate(Date = substr(label, 1, 10)) %>% filter(Date == theDate)
+        Miss_value <- Missing$value
+        
+        impX <- rep(NA, length(Miss_value))
+        for (j in 1:length(Miss_value)) {
+          if(is.na(Miss_value[j])) {
+            impX[j] <- pred[j]
+          } else {
+            impX[j] <- Miss_value[j]
+          }
+        }
+        values <- data.frame(label = Missing$label, value = impX)
+        
+        n_temp <- rbind(n_temp, values)
+        theDate <- theDate + 1
+        trainingData <- rbind(trainingData, values)
+        trainingData <- trainingData[-(1:season),]
+        
+      } else {
+        values <- dataset %>% mutate(Date = substr(dataset$label, 1, 10)) %>% 
+          filter(Date == theDate)
+        values <- data.frame(label = values$label, value = values$value)
+        
+        n_temp <- rbind(n_temp, values)
+        theDate <- theDate + 1
+        trainingData <- rbind(trainingData, values)
+        trainingData <- trainingData[-(1:season),]
+      }
+    } 
+    
+    else if(theDate %in% targetDate) {
+      tsTrain <- ts(trainingData$value, start = 1, frequency = season)
+      Model <- auto.arima(tsTrain, ic="aic", trace = F, stepwise = F, approximation = F, allowmean = F, allowdrift = F)
+      Model.pred <- predict(Model, 24)
+      pred <- Model.pred$pred
+      
+      Missing <- dataset %>% mutate(Date = substr(dataset$label, 1, 10)) %>% 
+        filter(Date == theDate)
+      Miss_value <- Missing$value
+      
+      impX <- rep(NA, length(Miss_value))
+      for (j in 1:length(Miss_value)) {
+        if(is.na(Miss_value[j])) {
+          impX[j] <- pred[j]
+        } else {
+          impX[j] <- Miss_value[j]
+        }
+      }
+      values <- data.frame(label = Missing$label, value = impX)
+      
+      n_temp <- rbind(n_temp, values)
+      theDate <- theDate + 1
+      trainingData <- rbind(trainingData, values)
+      trainingData <- trainingData[-(1:season),]
+    }
+    
+    else {
+      values <- dataset %>% mutate(Date = substr(dataset[[1]], 1, 10)) %>% 
+        filter(Date == theDate)
+      values <- data.frame(label = values$label, value = values$value)
+      
+      n_temp <- rbind(n_temp, values)
+      theDate <- theDate + 1
+      trainingData <- rbind(trainingData, values)
+      trainingData <- trainingData[-(1:season),]
+    }
+    
+  } 
+  
+  result <- n_temp
+  names(result) <- original_colname
+  
+  return(result)
+  
+}
+
+
+# shinyサーバー ---------------------------------------------------------------
 shinyServer(function(input, output, session){
 
-  # トレンドグラフ -----------------------------------------------------------------
-  # UIの選択によって、読み込むデータを変える
+  # アップロードされたデータ ------------------------------------------------------------
+  # 対象とするデータは24期周期の1時間間隔の時系列データ
   passData <- reactive({
     if(!is.null(input$file)) {
+      # 文字コード：UTF-8
       firstData <- read_csv(input$file$datapath)
       names(firstData)[1] <- "label"
     } else {
@@ -34,18 +167,18 @@ shinyServer(function(input, output, session){
     }
     
     return(firstData)
-  }) ### passDataの最終部分
+  })
   
-  # カレンダーによる日付範囲の設定
+  # カレンダーによる日付範囲の設定UIの出力 ----------------------------------------------------
   output$DateRange <- renderUI({
     dateRangeInput(inputId = "theRange", label = "日付範囲を指定してください",
                    start = substr(passData()$label[1], 1, 10),
                    end = substr(passData()$label[nrow(passData())], 1, 10),
                    format = "yyyy-mm-dd"
     )
-  }) ### DateRangeの最終部分
+  })
   
-  # カレンダーの範囲によって、変容するデータ
+  # カレンダーの範囲期間を抽出したデータ ------------------------------------------------------
   passData2 <- reactive({
     # 日付ラベルを追加
     firstData <- passData() %>% mutate(date = substr(label, 1, 10))
@@ -53,38 +186,37 @@ shinyServer(function(input, output, session){
       date >= input$theRange[1] & date <= input$theRange[2]
     ) %>% select(-c(date))
     
-    # labelの型をPOSIXctに変換
-    secondData$label <- as.POSIXct(secondData$label, "%Y-%m-%d %H:%M:%S", tz = "GMT")
+    # labelの型をPOSIXctに変換 タイムゾーン：UTC
+    secondData$label <- as.POSIXct(secondData$label, "%Y-%m-%d %H:%M:%S", tz = "UTC")
     
     return(secondData)
     
-  }) ### passData2の最終部分
+  })
   
-  
+  # データセットの列系統選択UIの出力 ----------------------------------------------------------
   output$selectDeps <- renderUI({
     # 列名labelは必要ないので除外
     Deplist = names(passData()[-1])
     
     selectInput(inputId = "theDeps", label = "トレンドグラフに描画する項目を指定してください（複数選択可）",
                 Deplist, multiple = T, selected = Deplist[1])
-  }) ### selectDepsの最終部分
+  })
   
-  
-  # 選択された部局のみ取り出す
+  # 選択された列系統と時刻ラベルを抽出したデータ --------------------------------------------------
   passData3 <- reactive({
     firstData <- passData2() %>% select(label, input$theDeps)
     
     return(firstData)
-  }) ### passData3の最終部分
+  })
   
-  # ggplot用にデータをgatherで整形しなおす
+  # ggplot用にデータをgather関数で形式変換したデータ ------------------------------------------
   passData4 <- reactive({
     firstData <- passData3() %>% tidyr::gather(input$theDeps, key = "Deps", value = "P_con")
     
     return(firstData)
-  }) ### passData4の最終部分
+  })
   
-  # データテーブルのアウトプット
+  # 選択された列系統と時刻ラベルを抽出したデータのテーブルの出力 ------------------------------------------
   output$DataTable <- renderDataTable({
     if (!is.null(input$file)) {
       datatable(passData3(),
@@ -99,29 +231,25 @@ shinyServer(function(input, output, session){
     } else {
       print(NULL)
     }
-    
-    
-  }) ### DataTableの最終部分
+  })
   
-  
+  # クラスタリングしたい列系統のプルダウンUIの出力 ---------------------------------------------------
   output$target_cluster <- renderUI({
     # 列名labelは必要ないので除外
     Deplist = names(passData()[-1])
     
     selectInput(inputId = "target", label = "クラスタリングしたい項目を指定してください（複数選択不可）",
                 Deplist, multiple = F, selected = Deplist[1])
-  }) ### selectDepsの最終部分
+  }) 
   
-  
-  # 選択された部局のみ取り出す
+  # クラスタリング用の列系統を抽出したデータ ----------------------------------------------------
   targetData <- reactive({
     firstData <- passData2() %>% select(label, input$target)
     
     return(firstData)
-  }) ### passData3の最終部分
+  })
   
-  # アイコン
-  # 全学電力量の最大値をアイコンとして出力
+  # 選択系列の最大値の情報ボックスの出力 ------------------------------------------------------
   output$Max <- renderInfoBox({
     if (!is.null(input$file)) {
       infoBox("選択系列の最大値", max(targetData()[[2]], na.rm = T), color = "red")
@@ -129,9 +257,9 @@ shinyServer(function(input, output, session){
       infoBox("選択系列の最大値", NULL, color = "red")
     }
     
-  }) ### Maxの最終部分
+  })
   
-  # 全学電力量の最小値のアイコンとして出力
+  # 選択系列の最小値の情報ボックスの出力 ------------------------------------------------------
   output$Min <- renderInfoBox({
     if (!is.null(input$file)) {
       infoBox("選択系列の最小値", min(targetData()[[2]], na.rm = T), color = "blue")
@@ -139,9 +267,9 @@ shinyServer(function(input, output, session){
       infoBox("選択系列の最小値", NULL, color = "blue")
     }
     
-  }) ### Minの最終部分
+  })
   
-  # 全学電力量の平均電力をアイコンとして出力
+  # 選択系列の平均値の情報ボックスの出力 ------------------------------------------------------
   output$Mean <- renderInfoBox({
     if (!is.null(input$file)) {
       infoBox("選択系列の平均値", mean(targetData()[[2]], na.rm = T), color = "green")
@@ -149,9 +277,9 @@ shinyServer(function(input, output, session){
       infoBox("選択系列の平均値", NULL, color = "green")
     }
     
-  }) ### Meanの最終部分
+  })
   
-  ## トレンドグラフ ###
+  # 選択系列のトレンドグラフの出力 ---------------------------------------------------------
   output$trendGragh <- renderPlot({
     if (!is.null(input$file)) {
       validate(
@@ -159,36 +287,42 @@ shinyServer(function(input, output, session){
       )
       
       ggplot(passData4(), aes(x = label, y = P_con, color = Deps)) + 
-        geom_line() + ylim(input$RangeY[1], input$RangeY[2]) + xlab("時間") + ylab("電力消費量[kWhh]") + ggtitle("トレンドグラフ")
+        geom_line() + ylim(input$RangeY[1], input$RangeY[2]) + xlab("時間") + ylab("電力消費量[kW]") + ggtitle("トレンドグラフ")
     } else {
       print(NULL)
     }
-    
-    
-  }) ### trendGraghの最終部分
+  })
   
-
-  # クラスターセンタープロット -----------------------------------------------------------
-  
-  
-  # NAがあってはならない
+  # クラスタリング用データの構築 ----------------------------------------------------------
   Data_qqq <- reactive({
-    if (!is.null(input$file)) {
+    if(!is.null(input$file)) {
+      # 対象列
       x <- passData() %>% select(input$target) %>% data.frame()
-      judge <- which(is.na(x))
+      # 時刻ラベル
+      tx <- passData() %>% select(label)
+      # 外れ値をNAに置き換える
+      x <- repOutliersNA(x)
+      judge1 <- which(is.na(x))
+      # 2変量データセットの構築
+      dataset <- data.frame(label=tx, column=x)
+      # NAの補定
+      if(length(judge1) != 0) {
+        dataset <- impPrediction(dataset, 24) 
+      }
       
+      judge2 <- which(is.na(dataset[[2]]))
+      # NAがあってはならない
       validate(
-        need(length(judge) == 0, "データの中に欠損値が含まれているので計算できません")
+        need(length(judge2) == 0, "データの中に欠損値が含まれているので計算できません")
       )
       
-      tx <- passData() %>% select(label)
       tx <- strptime(unlist(tx), "%Y-%m-%d %H:%M:%S")
       time <- format(tx, "%H:%M:%S")
       date <- format(tx, "%Y-%m-%d")
       date.day <- levels(factor(date))
       hour <- levels(factor(time))
       lab.date <- list(date.day, hour)
-      y <- matrix(x[1:nrow(x),], ncol=24, byrow=TRUE, dimnames = lab.date)
+      y <- matrix(x[1:nrow(dataset),], ncol=24, byrow=TRUE, dimnames = lab.date)
       
       inital.v <- apply(y,2, quantile, seq(0,1,1/6))
       
@@ -199,9 +333,10 @@ shinyServer(function(input, output, session){
     }
     
     return(centers)
-  }) ### Data_qqqの最終部分
+  })
   
   
+  # クラスタセンタープロットに適した形式に変換 ---------------------------------------------------
   Data_qqq2 <- reactive({
     if (!is.null(input$file)) {
       tr <- t(Data_qqq())
@@ -213,19 +348,20 @@ shinyServer(function(input, output, session){
     }
     
     return(mu)
-  }) ### Data_qqq2の最終部分
+  })
   
-  # クラスタセンタープロット
+  
+  # クラスタセンタープロットの出力 ---------------------------------------------------------
   output$qqq <- renderPlot({
     if (!is.null(input$file)) {
       qqq <- ggplot(Data_qqq2(),aes(x=Var1,y=value,group=Var2,color=cluster))+geom_line(size=1.2)+
         theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
-        xlab("時間") + ylab("電力消費量[kWhh]") + ggtitle("クラスタセンター")
+        xlab("時間") + ylab("電力消費量[kW]") + ggtitle("クラスタセンター")
       
       print(qqq)
     } else {
       print(NULL)
     }
-  }) ### qqqの最終部分
+  })
   
-}) ###  shinyServerの最終部分
+})
