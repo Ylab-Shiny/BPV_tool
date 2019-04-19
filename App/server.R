@@ -253,7 +253,12 @@ shinyServer(function(input, output, session){
     NA_points <- length(which(is.na(secondData[,2])))
     # 補完
     if(NA_points != 0) {
-      secondData <- impPrediction(secondData, season = 24)
+      withProgress(message = "欠損値が見つかりました", detail = "Please wait...",
+                   value = 1/2, {
+                     secondData <- impPrediction(secondData, season = 24)
+                     incProgress(1/2)
+                   })
+      
     }
     
     return(secondData)
@@ -282,7 +287,7 @@ shinyServer(function(input, output, session){
   # 選択系列の平均値の情報ボックスの出力 ------------------------------------------------------
   output$Mean <- renderInfoBox({
     if (!is.null(input$file)) {
-      infoBox("選択系列の平均値", mean(targetData()[[2]], na.rm = T), color = "green")
+      infoBox("選択系列の平均値", round(mean(targetData()[[2]], na.rm = T), digits = 0), color = "green")
     } else {
       infoBox("選択系列の平均値", NULL, color = "green")
     }
@@ -307,14 +312,14 @@ shinyServer(function(input, output, session){
   Data_qqq <- reactive({
     if(!is.null(input$file)) {
       # 対象列
-      x <- targetData()[,2] %>% data.frame()
+      x <- targetData()[[2]] %>% data.frame()
       # NAがあってはならない
       validate(
         need(length(which(is.na(x))) == 0, "データの中に欠損値が含まれているので計算できません")
       )
       
       # 時間列
-      tx <- targetData[,1]
+      tx <- targetData()[[1]]
       tx <- strptime(unlist(tx), "%Y-%m-%d %H:%M:%S")
       time <- format(tx, "%H:%M:%S")
       date <- format(tx, "%Y-%m-%d")
