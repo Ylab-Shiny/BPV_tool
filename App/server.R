@@ -22,7 +22,6 @@ options(shiny.launch.browser = T)
 
 # 外れ値処理の関数化 ---------------------------------------------------------------------
 repOutliersNA <- function(Column) {
-  Column <- tbl_df(Column)
   xx1 <- Column %>% mutate(
     Norm = (Column-min(Column, na.rm = T)) / (max(Column, na.rm = T)-min(Column, na.rm = T)) * (1-0) + 0
   )
@@ -44,8 +43,9 @@ repOutliersNA <- function(Column) {
   Column_removeOutliers[outer_outlier$row_number, 1] <- NA
   
   
-  return(data.frame(Column_removeOutliers))
+  return(Column_removeOutliers)
 }
+
 
 
 
@@ -244,9 +244,19 @@ shinyServer(function(input, output, session){
   
   # クラスタリング用の列系統を抽出したデータ ----------------------------------------------------
   targetData <- reactive({
-    firstData <- passData2() %>% select(label, input$target)
+    firstData <- passData() %>% select(label, input$target)
+    Names <- names(firstData)
+    repNA <- repOutliersNA(firstData[,2])
+    # 外れ値をNAに置き換える
+    secondData <- cbind.data.frame(firstData$label, repNA)
+    names(secondData) <- Names
+    NA_points <- length(which(is.na(secondData[,2])))
+    # 補完
+    if(NA_points != 0) {
+      secondData <- impPrediction(secondData, season = 24)
+    }
     
-    return(firstData)
+    return(secondData)
   })
   
   # 選択系列の最大値の情報ボックスの出力 ------------------------------------------------------
@@ -297,34 +307,23 @@ shinyServer(function(input, output, session){
   Data_qqq <- reactive({
     if(!is.null(input$file)) {
       # 対象列
-      x <- passData() %>% select(input$target) %>% data.frame()
-      # 時刻ラベル
-      tx <- passData() %>% select(label)
-      # 外れ値をNAに置き換える
-      x <- repOutliersNA(x)
-      judge1 <- which(is.na(x))
-      # 2変量データセットの構築
-      dataset <- data.frame(label=tx, column=x)
-      # NAの補定
-      if(length(judge1) != 0) {
-        dataset <- impPrediction(dataset, 24) 
-      }
-      
-      judge2 <- which(is.na(dataset[[2]]))
+      x <- targetData()[,2] %>% data.frame()
       # NAがあってはならない
       validate(
-        need(length(judge2) == 0, "データの中に欠損値が含まれているので計算できません")
+        need(length(which(is.na(x))) == 0, "データの中に欠損値が含まれているので計算できません")
       )
       
+      # 時間列
+      tx <- targetData[,1]
       tx <- strptime(unlist(tx), "%Y-%m-%d %H:%M:%S")
       time <- format(tx, "%H:%M:%S")
       date <- format(tx, "%Y-%m-%d")
       date.day <- levels(factor(date))
       hour <- levels(factor(time))
       lab.date <- list(date.day, hour)
-      y <- matrix(x[1:nrow(dataset),], ncol=24, byrow=TRUE, dimnames = lab.date)
+      y <- matrix(x[1:nrow(x),], ncol=24, byrow=TRUE, dimnames = lab.date)
       
-      inital.v <- apply(y,2, quantile, seq(0,1,1/6))
+      inital.v <- apply(y, 2, quantile, seq(0,1,1/6))
       
       kmean.y <- kmeans(y, inital.v[2:7,])
       centers <- kmean.y$centers

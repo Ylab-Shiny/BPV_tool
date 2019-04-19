@@ -3,7 +3,6 @@
 library(dplyr)
 
 repOutliersNA <- function(Column) {
-  Column <- tbl_df(Column)
   xx1 <- Column %>% mutate(
     Norm = (Column-min(Column, na.rm = T)) / (max(Column, na.rm = T)-min(Column, na.rm = T)) * (1-0) + 0
   )
@@ -25,7 +24,7 @@ repOutliersNA <- function(Column) {
   Column_removeOutliers[outer_outlier$row_number, 1] <- NA
   
   
-  return(data.frame(Column_removeOutliers))
+  return(Column_removeOutliers)
 }
 
 # 補完の関数化 ---------------------------------------------------------------------
