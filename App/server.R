@@ -267,7 +267,7 @@ shinyServer(function(input, output, session){
   # 選択系列の最大値の情報ボックスの出力 ------------------------------------------------------
   output$Max <- renderInfoBox({
     if (!is.null(input$file)) {
-      infoBox("選択系列の最大値", max(targetData()[[2]], na.rm = T), color = "red")
+      infoBox("選択系列の最大値", round(max(targetData()[[2]], na.rm = T), digits = 0), color = "red")
     } else {
       infoBox("選択系列の最大値", NULL, color = "red")
     }
@@ -277,7 +277,7 @@ shinyServer(function(input, output, session){
   # 選択系列の最小値の情報ボックスの出力 ------------------------------------------------------
   output$Min <- renderInfoBox({
     if (!is.null(input$file)) {
-      infoBox("選択系列の最小値", min(targetData()[[2]], na.rm = T), color = "blue")
+      infoBox("選択系列の最小値", round(min(targetData()[[2]], na.rm = T), digits = 0), color = "blue")
     } else {
       infoBox("選択系列の最小値", NULL, color = "blue")
     }
