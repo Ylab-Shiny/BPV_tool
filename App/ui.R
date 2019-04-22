@@ -44,7 +44,7 @@ body <- dashboardBody(
     tabItem(
       h1("ようこそ『建物エネルギーデータ分析ツール』へ"),
       tabName = "table",
-      dataTableOutput("DataTable")),
+      DT::dataTableOutput("DataTable")),
     
     tabItem(tabName = "trend",
             
