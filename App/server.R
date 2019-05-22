@@ -16,6 +16,7 @@ library(stats)
 library(tseries)
 library(forecast)
 library(norm2)
+library(imputeTS)
 
 # browser設定 ---------------------------------------------------------------
 options(shiny.launch.browser = T)
@@ -47,109 +48,6 @@ repOutliersNA <- function(Column) {
 }
 
 
-
-
-# 補完の関数化 ---------------------------------------------------------------------
-impPrediction <- function(BivariateDataframe, season) {
-  originalLabel <- BivariateDataframe[[1]]
-  original_colname <- colnames(BivariateDataframe)
-  dateList <- substr(originalLabel, 1, 10) %>% unique()
-  MissingData <- BivariateDataframe[which(is.na(BivariateDataframe[[2]])), ]
-  targetDate <- substr(MissingData[[1]], 1, 10) %>% unique() %>% as.Date()
-  
-  for (i in 4:length(dateList)) {
-    if(i == 4) {
-      
-      theDate <- as.Date(dateList[i])
-      endDate <- theDate - 1
-      startDate <- endDate - 2
-      
-      dataset <- BivariateDataframe
-      names(dataset) <- c("label", "value")
-      trainingData <- dataset[1:(season*3), ]
-      tsTrain <- ts(trainingData$value, start = 1, frequency = season)
-      n_temp <- data.frame(trainingData)
-      
-      if(theDate %in% targetDate) {
-        Model <- auto.arima(tsTrain, ic="aic", trace = F, stepwise = F, approximation = F, allowmean = F, allowdrift = F)
-        Model.pred <- predict(Model, 24)
-        pred <- Model.pred$pred
-        
-        Missing <- dataset %>% mutate(Date = substr(label, 1, 10)) %>% filter(Date == theDate)
-        Miss_value <- Missing$value
-        
-        impX <- rep(NA, length(Miss_value))
-        for (j in 1:length(Miss_value)) {
-          if(is.na(Miss_value[j])) {
-            impX[j] <- pred[j]
-          } else {
-            impX[j] <- Miss_value[j]
-          }
-        }
-        values <- data.frame(label = Missing$label, value = impX)
-        
-        n_temp <- rbind(n_temp, values)
-        theDate <- theDate + 1
-        trainingData <- rbind(trainingData, values)
-        trainingData <- trainingData[-(1:season),]
-        
-      } else {
-        values <- dataset %>% mutate(Date = substr(dataset$label, 1, 10)) %>% 
-          filter(Date == theDate)
-        values <- data.frame(label = values$label, value = values$value)
-        
-        n_temp <- rbind(n_temp, values)
-        theDate <- theDate + 1
-        trainingData <- rbind(trainingData, values)
-        trainingData <- trainingData[-(1:season),]
-      }
-    } 
-    
-    else if(theDate %in% targetDate) {
-      tsTrain <- ts(trainingData$value, start = 1, frequency = season)
-      Model <- auto.arima(tsTrain, ic="aic", trace = F, stepwise = F, approximation = F, allowmean = F, allowdrift = F)
-      Model.pred <- predict(Model, 24)
-      pred <- Model.pred$pred
-      
-      Missing <- dataset %>% mutate(Date = substr(dataset$label, 1, 10)) %>% 
-        filter(Date == theDate)
-      Miss_value <- Missing$value
-      
-      impX <- rep(NA, length(Miss_value))
-      for (j in 1:length(Miss_value)) {
-        if(is.na(Miss_value[j])) {
-          impX[j] <- pred[j]
-        } else {
-          impX[j] <- Miss_value[j]
-        }
-      }
-      values <- data.frame(label = Missing$label, value = impX)
-      
-      n_temp <- rbind(n_temp, values)
-      theDate <- theDate + 1
-      trainingData <- rbind(trainingData, values)
-      trainingData <- trainingData[-(1:season),]
-    }
-    
-    else {
-      values <- dataset %>% mutate(Date = substr(dataset[[1]], 1, 10)) %>% 
-        filter(Date == theDate)
-      values <- data.frame(label = values$label, value = values$value)
-      
-      n_temp <- rbind(n_temp, values)
-      theDate <- theDate + 1
-      trainingData <- rbind(trainingData, values)
-      trainingData <- trainingData[-(1:season),]
-    }
-    
-  } 
-  
-  result <- n_temp
-  names(result) <- original_colname
-  
-  return(result)
-  
-}
 
 
 # shinyサーバー ---------------------------------------------------------------
@@ -255,7 +153,7 @@ shinyServer(function(input, output, session){
     if(NA_points != 0) {
       withProgress(message = "欠損値が見つかりました", detail = "Please wait...",
                    value = 1/2, {
-                     secondData <- impPrediction(secondData, season = 24)
+                     secondData[[2]] <- na.interpolation(secondData[[2]], option = "linear")
                      incProgress(1/2)
                    })
       
@@ -328,7 +226,7 @@ shinyServer(function(input, output, session){
       lab.date <- list(date.day, hour)
       y <- matrix(x[1:nrow(x),], ncol=24, byrow=TRUE, dimnames = lab.date)
       
-      inital.v <- apply(y, 2, quantile, seq(0,1,1/6))
+      inital.v <- apply(y, 2, quantile, seq(0, 1, 1/7))
       
       kmean.y <- kmeans(y, inital.v[2:7,])
       centers <- kmean.y$centers
