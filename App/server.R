@@ -15,7 +15,6 @@ library(data.table)
 library(stats)
 library(tseries)
 library(forecast)
-library(norm2)
 library(imputeTS)
 
 # browser設定 ---------------------------------------------------------------
