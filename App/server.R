@@ -16,6 +16,7 @@ library(stats)
 library(tseries)
 library(forecast)
 library(imputeTS)
+library(reshape2)
 
 # browser設定 ---------------------------------------------------------------
 options(shiny.launch.browser = T)
