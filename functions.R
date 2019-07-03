@@ -2,11 +2,12 @@
 # 必要なパッケージ
 library(dplyr)
 
-repOutliersNA <- function(Column) {
-  xx1 <- Column %>% mutate(
-    Norm = (Column-min(Column, na.rm = T)) / (max(Column, na.rm = T)-min(Column, na.rm = T)) * (1-0) + 0
+RepOutliersNA <- function(column) {
+  column <- as_tibble(column)
+  xx1 <- as_tibble(column) %>% mutate(
+    Norm = (column[[1]]-min(column[[1]], na.rm = T)) / (max(column[[1]], na.rm = T)-min(column[[1]], na.rm = T)) * (1-0) + 0
   )
-  qq <- data.frame(quantile(xx1[[2]],c(0.25, 0.75), na.rm = T))
+  qq <- data.frame(quantile(xx1[[2]], c(0.25, 0.75), na.rm = T))
   Q1 <- qq[1, 1]
   Q3 <- qq[2, 1]
   
@@ -19,12 +20,12 @@ repOutliersNA <- function(Column) {
   row_num_out <- unique(c(outer_ll, outer_mm)) %>% sort()
   
   # 外れ値の出力
-  outer_outlier <- cbind.data.frame(Column[row_num_out,], row_number = row_num_out)
-  Column_removeOutliers <- Column
-  Column_removeOutliers[outer_outlier$row_number, 1] <- NA
+  outer_outlier <- cbind.data.frame(column[row_num_out,], row_number = row_num_out)
+  column_removeOutliers <- column
+  column_removeOutliers[outer_outlier$row_number, 1] <- NA
   
   
-  return(Column_removeOutliers)
+  return(column_removeOutliers)
 }
 
 # 補完の関数化 ---------------------------------------------------------------------
